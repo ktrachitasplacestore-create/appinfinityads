@@ -185,7 +185,6 @@
     // =======================================================
     //          CONFIGURACIÓN DE LOS WEBHOOKS DE N8N
     // =======================================================
-    // IMPORTANTE: Reemplaza estas URLs con las URLs de tus webhooks en n8n.
     const N8N_LOGIN_WEBHOOK = 'https://miia360n8n.ktrachitas.store/webhook/auth';
     const N8N_GENERATE_WEBHOOK = 'https://miia360n8n.ktrachitas.store/webhook/generate-image';
 
@@ -298,7 +297,12 @@
             }
 
             const responseData = await response.json();
-            const data = responseData[0]; // La respuesta es un array con un objeto
+            // La respuesta de n8n puede ser un objeto o un array con un objeto. Esto maneja ambos casos.
+            const data = Array.isArray(responseData) ? responseData[0] : responseData;
+
+            if (!data) { // Verificación extra por si la respuesta viene vacía
+                throw new Error('Respuesta inesperada del servidor.');
+            }
 
             // Asumimos que n8n responde con { success: true, token: '...', user: { ... } }
             if (data.success && data.token && data.user) {
@@ -344,21 +348,6 @@
             // Si no hay token, es un error de estado. Forzamos un logout.
             setGeneratorState('error', 'Error de autenticación. Por favor, vuelve a iniciar sesión.');
             setTimeout(handleLogout, 2000); // Desconectamos al usuario después de 2 segundos
-            return;
-        }
-        
-        // Simulación de respuesta de N8N para pruebas.
-        // ¡COMENTA O BORRA ESTO CUANDO USES TU WEBHOOK REAL!
-        if (N8N_GENERATE_WEBHOOK.includes('TU_INSTANCIA_DE_N8N')) {
-            console.warn("Estás usando la URL de webhook de ejemplo. Simulando una respuesta exitosa.");
-            setTimeout(() => {
-                const newCredits = parseInt(creditBalanceSpan.textContent) - 1;
-                // Usamos una imagen de placeholder para la simulación
-                const generatedImageUrl = `https://placehold.co/1024x1024/1a1a3d/c4b5fd?text=Imagen+Generada`;
-                
-                updateCreditBalance(newCredits);
-                setGeneratorState('result', generatedImageUrl);
-            }, 3000);
             return;
         }
 
