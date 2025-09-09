@@ -306,7 +306,11 @@
 
             // Asumimos que n8n responde con { success: true, token: '...', user: { ... } }
             if (data.success && data.token && data.user) {
-                userAuthToken = data.token; // Guardamos el token en nuestra variable global
+                // --- PASO CLAVE 1: GUARDAR EL TOKEN ---
+                // Aquí, el token recibido del backend se guarda en la variable global 'userAuthToken'.
+                // Esta variable persistirá mientras la página esté abierta y la sesión activa.
+                userAuthToken = data.token; 
+                
                 updateCreditBalance(data.user.credits);
                 loginScreen.classList.add('hidden');
                 generatorScreen.classList.remove('hidden');
@@ -341,11 +345,13 @@
         formData.append('characterImage', characterImageInput.files[0]);
         formData.append('scenario', scenarioSelect.value);
         
-        // Adjuntamos el token de autenticación a la petición
+        // --- PASO CLAVE 2: ENVIAR EL TOKEN GUARDADO ---
+        // Adjuntamos el token de autenticación que guardamos al iniciar sesión.
+        // Tu backend n8n lo recibirá como un campo de formulario llamado 'token'.
         if (userAuthToken) {
             formData.append('token', userAuthToken);
         } else {
-            // Si no hay token, es un error de estado. Forzamos un logout.
+            // Si por alguna razón no hay token, es un error de estado. Forzamos un logout.
             setGeneratorState('error', 'Error de autenticación. Por favor, vuelve a iniciar sesión.');
             setTimeout(handleLogout, 2000); // Desconectamos al usuario después de 2 segundos
             return;
