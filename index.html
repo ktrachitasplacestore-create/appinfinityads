@@ -231,6 +231,12 @@
 
 
     // =======================================================
+    //          ESTADO GLOBAL DE LA APLICACIÓN
+    // =======================================================
+    let userAuthToken = null; // Variable para almacenar el token de autenticación del usuario
+
+
+    // =======================================================
     //                 LÓGICA DE LA APLICACIÓN
     // =======================================================
 
@@ -287,14 +293,17 @@
             if (!response.ok) {
                 // Intenta leer un mensaje de error del backend, si no, usa uno genérico.
                 const errorData = await response.json().catch(() => null);
-                throw new Error(errorData?.message || 'Credenciales incorrectas o error en el servidor.');
+                const errorMessage = Array.isArray(errorData) ? errorData[0]?.message : errorData?.message;
+                throw new Error(errorMessage || 'Credenciales incorrectas o error en el servidor.');
             }
 
-            const data = await response.json();
+            const responseData = await response.json();
+            const data = responseData[0]; // La respuesta es un array con un objeto
 
-            // Asumimos que n8n responde con { success: true, credits: 100 }
-            if (data.success) {
-                updateCreditBalance(data.credits);
+            // Asumimos que n8n responde con { success: true, token: '...', user: { ... } }
+            if (data.success && data.token && data.user) {
+                userAuthToken = data.token; // Guardamos el token en nuestra variable global
+                updateCreditBalance(data.user.credits);
                 loginScreen.classList.add('hidden');
                 generatorScreen.classList.remove('hidden');
             } else {
@@ -327,9 +336,16 @@
         formData.append('productImage', productImageInput.files[0]);
         formData.append('characterImage', characterImageInput.files[0]);
         formData.append('scenario', scenarioSelect.value);
-        // Aquí podrías agregar más datos si tu flujo de n8n los necesita,
-        // como un ID de usuario que obtuviste en el login.
-        // formData.append('userId', 'USER_ID_OBTENIDO_DEL_LOGIN');
+        
+        // Adjuntamos el token de autenticación a la petición
+        if (userAuthToken) {
+            formData.append('token', userAuthToken);
+        } else {
+            // Si no hay token, es un error de estado. Forzamos un logout.
+            setGeneratorState('error', 'Error de autenticación. Por favor, vuelve a iniciar sesión.');
+            setTimeout(handleLogout, 2000); // Desconectamos al usuario después de 2 segundos
+            return;
+        }
         
         // Simulación de respuesta de N8N para pruebas.
         // ¡COMENTA O BORRA ESTO CUANDO USES TU WEBHOOK REAL!
@@ -429,6 +445,7 @@
      */
     function handleLogout() {
         // Limpiar datos y volver a la pantalla de login
+        userAuthToken = null; // MUY IMPORTANTE: Limpiar el token al cerrar sesión
         emailInput.value = '';
         passwordInput.value = '';
         generatorScreen.classList.add('hidden');
