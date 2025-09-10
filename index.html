@@ -273,9 +273,8 @@
      * @param {'login' | 'register'} action - La acción a realizar.
      */
     async function performAuthAction(action) {
-        // Se asegura que el formulario sea válido antes de continuar
         if (!loginForm.checkValidity()) {
-            loginForm.reportValidity(); // Muestra el mensaje de error de HTML5 (ej: "Por favor, rellena este campo")
+            loginForm.reportValidity();
             return;
         }
 
@@ -290,32 +289,25 @@
                 body: JSON.stringify({
                     email: emailInput.value,
                     password: passwordInput.value,
-                    action: action // ¡Aquí está el dato clave para tu backend!
+                    action: action
                 })
             });
 
             if (!response.ok) {
-                // Intenta leer un mensaje de error del backend, si no, usa uno genérico.
                 const errorData = await response.json().catch(() => null);
                 const errorMessage = Array.isArray(errorData) ? errorData[0]?.message : errorData?.message;
                 throw new Error(errorMessage || 'Credenciales incorrectas o error en el servidor.');
             }
 
             const responseData = await response.json();
-            // La respuesta de n8n puede ser un objeto o un array con un objeto. Esto maneja ambos casos.
             const data = Array.isArray(responseData) ? responseData[0] : responseData;
 
-            if (!data) { // Verificación extra por si la respuesta viene vacía
+            if (!data) {
                 throw new Error('Respuesta inesperada del servidor.');
             }
 
-            // Asumimos que n8n responde con { success: true, token: '...', user: { ... } }
             if (data.success && data.token && data.user) {
-                // --- PASO CLAVE 1: GUARDAR EL TOKEN ---
-                // Aquí, el token recibido del backend se guarda en la variable global 'userAuthToken'.
-                // Esta variable persistirá mientras la página esté abierta y la sesión activa.
                 userAuthToken = data.token; 
-                
                 updateCreditBalance(data.user.credits);
                 loginScreen.classList.add('hidden');
                 generatorScreen.classList.remove('hidden');
@@ -350,38 +342,45 @@
         formData.append('characterImage', characterImageInput.files[0]);
         formData.append('scenario', scenarioSelect.value);
         
-        // --- PASO CLAVE 2: ENVIAR EL TOKEN GUARDADO ---
-        // Adjuntamos el token de autenticación que guardamos al iniciar sesión.
-        // Tu backend n8n lo recibirá como un campo de formulario llamado 'token'.
         if (userAuthToken) {
             formData.append('token', userAuthToken);
         } else {
-            // Si por alguna razón no hay token, es un error de estado. Forzamos un logout.
             setGeneratorState('error', 'Error de autenticación. Por favor, vuelve a iniciar sesión.');
-            setTimeout(handleLogout, 2000); // Desconectamos al usuario después de 2 segundos
+            setTimeout(handleLogout, 2000);
             return;
         }
 
         try {
             const response = await fetch(N8N_GENERATE_WEBHOOK, {
                 method: 'POST',
-                body: formData // No necesitas 'headers' cuando usas FormData, el navegador lo pone.
+                body: formData
             });
+            
+            // --- INICIO DE LA LÓGICA CORREGIDA ---
 
+            // Si la respuesta NO está OK, asumimos que es un error en formato JSON.
             if (!response.ok) {
-                 const errorData = await response.json();
+                 const errorData = await response.json(); // Intentamos leer el JSON del error
                  throw new Error(errorData.message || 'Error al generar la imagen. ¿Créditos insuficientes?');
             }
             
-            const data = await response.json();
-
-            // Asumimos que n8n responde con { newCredits: 99, imageUrl: 'URL_DE_LA_IMAGEN' }
-            if(data.imageUrl && typeof data.newCredits !== 'undefined') {
-                updateCreditBalance(data.newCredits);
-                setGeneratorState('result', data.imageUrl);
+            // Si la respuesta SÍ está OK, la procesamos como una imagen.
+            const newCredits = response.headers.get('X-New-Credits'); // Leemos el nuevo saldo de la cabecera
+            const imageBlob = await response.blob(); // Leemos la imagen como un objeto binario (Blob)
+            
+            // Verificamos que hemos recibido los créditos
+            if (newCredits !== null) {
+                updateCreditBalance(parseInt(newCredits, 10)); // Actualizamos los créditos
+                
+                // Creamos una URL local para el Blob de la imagen
+                const imageUrl = URL.createObjectURL(imageBlob);
+                
+                // Mostramos el resultado
+                setGeneratorState('result', imageUrl);
             } else {
-                throw new Error('La respuesta del servidor no fue la esperada.');
+                throw new Error('La respuesta del servidor no incluyó el nuevo saldo de créditos.');
             }
+            // --- FIN DE LA LÓGICA CORREGIDA ---
 
         } catch (error) {
             setGeneratorState('error', error.message);
@@ -458,18 +457,13 @@
     generatorForm.addEventListener('submit', handleGeneration);
     logoutButton.addEventListener('click', handleLogout);
 
-    // En lugar de un listener 'submit' genérico, usamos listeners 'click'
-    // para saber exactamente qué se presionó.
-
-    // Listener para el botón de Iniciar Sesión
     loginButton.addEventListener('click', (e) => {
-        e.preventDefault(); // Evita el envío tradicional del formulario.
+        e.preventDefault();
         performAuthAction('login');
     });
 
-    // Listener para el enlace de Registro
     registerLink.addEventListener('click', (e) => {
-        e.preventDefault(); // Evita que el enlace navegue.
+        e.preventDefault();
         performAuthAction('register');
     });
 
