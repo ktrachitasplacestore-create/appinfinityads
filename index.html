@@ -356,34 +356,38 @@
                 body: formData
             });
             
-            // --- INICIO DE LA LÓGICA CORREGIDA ---
+            // --- INICIO DE LA LÓGICA NUEVA ---
+            // Leemos la respuesta como JSON, ya que el backend ahora devuelve una URL y los créditos en este formato.
+            const responseData = await response.json();
 
-            // Si la respuesta NO está OK, asumimos que es un error en formato JSON.
+            // Si la respuesta HTTP no es exitosa (ej. 4xx, 5xx), lanzamos un error con el mensaje del JSON.
             if (!response.ok) {
-                 const errorData = await response.json(); // Intentamos leer el JSON del error
-                 throw new Error(errorData.message || 'Error al generar la imagen. ¿Créditos insuficientes?');
+                 const errorInfo = Array.isArray(responseData) ? responseData[0] : responseData;
+                 throw new Error(errorInfo.message || 'Error al generar la imagen. ¿Créditos insuficientes?');
             }
             
-            // Si la respuesta SÍ está OK, la procesamos como una imagen.
-            const newCredits = response.headers.get('X-New-Credits'); // Leemos el nuevo saldo de la cabecera
-            const imageBlob = await response.blob(); // Leemos la imagen como un objeto binario (Blob)
+            // Si la respuesta es exitosa, procesamos el JSON.
+            const resultData = Array.isArray(responseData) ? responseData[0] : responseData;
             
-            // Verificamos que hemos recibido los créditos
-            if (newCredits !== null) {
-                updateCreditBalance(parseInt(newCredits, 10)); // Actualizamos los créditos
-                
-                // Creamos una URL local para el Blob de la imagen
-                const imageUrl = URL.createObjectURL(imageBlob);
-                
-                // Mostramos el resultado
+            // Verificamos que el JSON tiene los campos que esperamos: 'image_url' y 'fields.credits_remaining'
+            if (resultData.image_url && resultData.fields && typeof resultData.fields.credits_remaining !== 'undefined') {
+                const imageUrl = resultData.image_url;
+                const newCredits = resultData.fields.credits_remaining;
+
+                updateCreditBalance(newCredits);
                 setGeneratorState('result', imageUrl);
             } else {
-                throw new Error('La respuesta del servidor no incluyó el nuevo saldo de créditos.');
+                throw new Error('La respuesta del servidor tiene un formato inesperado.');
             }
-            // --- FIN DE LA LÓGICA CORREGIDA ---
+            // --- FIN DE LA LÓGICA NUEVA ---
 
         } catch (error) {
-            setGeneratorState('error', error.message);
+            // Si el error es de sintaxis (ej. 'Unexpected token <'), significa que la respuesta no fue JSON.
+            if (error instanceof SyntaxError) {
+                 setGeneratorState('error', 'Error inesperado del servidor. La respuesta no era un JSON válido.');
+            } else {
+                setGeneratorState('error', error.message);
+            }
         }
     }
 
